@@ -1,6 +1,4 @@
 import Producto from "../models/productoModel.js";
-import fs from "fs-extra"; // Para borrar imágenes viejas si se actualizan
-import path from "path";
 
 /**
  * ✅ OBTENER PRODUCTOS POR CATEGORÍA
@@ -31,9 +29,10 @@ export const obtenerProductosPorCategoria = async (req, res) => {
  */
 export const crearProducto = async (req, res) => {
   try {
-    // 👈 ¡NUEVO! Agregamos codigo_barras a la desestructuración
     const { nombre, precio, stock, categoria_id, descripcion, proveedor_id, codigo_barras } = req.body;
-    const imagen = req.file ? req.file.filename : null;
+    
+    // ☁️ MODIFICADO: Guardamos la URL completa (.path) de Cloudinary si existe
+    const imagen = req.file ? req.file.path : "default.png";
 
     // 🛡️ VALIDACIÓN DE SEGURIDAD PARA CATEGORÍA
     if (categoria_id && categoria_id.length !== 24) {
@@ -58,24 +57,23 @@ export const crearProducto = async (req, res) => {
 
     const nuevoProducto = new Producto({
       nombre,
-      precio: parseFloat(precio), // Aseguramos que sea número
+      precio: parseFloat(precio), 
       stock: parseInt(stock) || 0,
       categoria_id,
       proveedor_id,
-      codigo_barras: codigo_barras || "", // 👈 ¡NUEVO! Lo guardamos si viene, si no, queda vacío
+      codigo_barras: codigo_barras || "", 
       descripcion: descripcion || "",
-      imagen: imagen
+      imagen: imagen // Guardará algo como: https://res.cloudinary.com/...
     });
 
     await nuevoProducto.save();
     
-    // Devolvemos el producto poblado para que el Frontend lo vea bien de inmediato
     const productoGuardado = await Producto.findById(nuevoProducto._id)
       .populate("categoria_id", "nombre")
       .populate("proveedor_id", "nombreEmpresa"); 
 
     res.status(201).json({ 
-      mensaje: "✅ Producto creado y guardado en Atlas", 
+      mensaje: "✅ Producto creado y guardado en Atlas con imagen en la nube", 
       producto: productoGuardado 
     });
   } catch (error) {
@@ -105,31 +103,26 @@ export const obtenerProductos = async (req, res) => {
 export const actualizarProducto = async (req, res) => {
   try {
     const { id } = req.params;
-    // Esto tomará automáticamente el codigo_barras y el proveedor_id si vienen en el frontend
     const datosActualizar = { ...req.body }; 
 
-    // Buscar producto actual para manejar la imagen
+    // Buscar producto actual
     const productoPrevio = await Producto.findById(id);
     if (!productoPrevio) return res.status(404).json({ mensaje: "Producto no encontrado" });
 
+    // ☁️ MODIFICADO: Si el usuario sube una nueva foto, capturamos el .path de Cloudinary
     if (req.file) {
-      // 🗑️ OPCIONAL: Borrar la imagen anterior del disco si existe una nueva
-      if (productoPrevio.imagen) {
-        const rutaImagen = path.resolve(`uploads/${productoPrevio.imagen}`);
-        if (await fs.exists(rutaImagen)) await fs.unlink(rutaImagen);
-      }
-      datosActualizar.imagen = req.file.filename;
+      datosActualizar.imagen = req.file.path;
     }
 
     const productoActualizado = await Producto.findByIdAndUpdate(
       id, 
       datosActualizar, 
-      { new: true, runValidators: true } // 'new: true' es el estándar moderno en Mongoose
+      { new: true, runValidators: true } 
     )
     .populate("categoria_id", "nombre")
     .populate("proveedor_id", "nombreEmpresa"); 
 
-    res.json({ mensaje: "✅ Producto actualizado", producto: productoActualizado });
+    res.json({ mensaje: "✅ Producto actualizado con éxito", producto: productoActualizado });
   } catch (error) {
     console.error("❌ Error al actualizar:", error.message);
     res.status(500).json({ mensaje: "Error al actualizar producto" });
@@ -146,14 +139,8 @@ export const eliminarProducto = async (req, res) => {
     const producto = await Producto.findById(id);
     if (!producto) return res.status(404).json({ mensaje: "Producto no encontrado" });
 
-    // 🗑️ Borrar imagen física antes de borrar de la DB
-    if (producto.imagen) {
-      const rutaImagen = path.resolve(`uploads/${producto.imagen}`);
-      if (await fs.exists(rutaImagen)) await fs.unlink(rutaImagen);
-    }
-
     await Producto.findByIdAndDelete(id);
-    res.json({ mensaje: "🗑️ Producto e imagen eliminados correctamente" });
+    res.json({ mensaje: "🗑️ Producto eliminado correctamente de la base de datos" });
   } catch (error) {
     res.status(500).json({ mensaje: "Error al eliminar" });
   }

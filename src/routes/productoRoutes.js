@@ -1,6 +1,7 @@
 import express from "express";
 import multer from "multer";
-import path from "path";
+import { v2 as cloudinary } from "cloudinary";
+import { CloudinaryStorage } from "multer-storage-cloudinary";
 import {
   obtenerProductos,
   crearProducto,
@@ -12,21 +13,24 @@ import {
 const router = express.Router();
 
 /* ==========================================
-   ⚙️ CONFIGURACIÓN DE MULTER
+   ☁️ CONFIGURACIÓN DE CLOUDINARY
 ========================================== */
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    // La carpeta "uploads" debe estar en la raíz del proyecto
-    cb(null, "uploads/");
-  },
-  filename: (req, file, cb) => {
-    // Guardamos con la fecha actual para evitar nombres duplicados
-    const ext = path.extname(file.originalname);
-    cb(null, `${Date.now()}${ext}`);
+// Le damos a Cloudinary las llaves que guardaste en tu archivo .env
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+// Configuramos Multer para que envíe el archivo directamente a Cloudinary
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "tienda-barrios", // Las fotos se guardarán en esta carpeta dentro de Cloudinary
+    allowed_formats: ["jpg", "jpeg", "png", "webp"], // Formatos permitidos
   },
 });
 
-// Definimos la constante una sola vez
 const uploadMiddleware = multer({ storage });
 
 /* ==========================================
@@ -40,7 +44,6 @@ router.get("/categoria/:categoria_id", obtenerProductosPorCategoria);
 router.get("/", obtenerProductos);
 
 // 3. Crear producto (El campo en el FormData debe ser "imagen")
-// He cambiado "Imagen" a "imagen" para que coincida con tu controlador
 router.post("/", uploadMiddleware.single("imagen"), crearProducto);
 
 // 4. Actualizar producto
