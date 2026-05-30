@@ -3,17 +3,33 @@ import jwt from "jsonwebtoken";
 import { config } from "../config/config.js";
 import bcrypt from "bcryptjs";
 
-// ✅ LOGIN: Compara lo que escribe el usuario con el Hash de Atlas
+// ✅ LOGIN: Ahora permite iniciar sesión con Correo O con Nombre de Usuario (ej: caja1)
 export const loginUsuario = async (req, res) => {
   try {
-    const { correo, password } = req.body;
-    const usuario = await Usuario.findOne({ correo: correo.trim() }).select("+contrasena");
+    // 1. Recibimos 'identificador' que envía el nuevo frontend
+    const { identificador, password } = req.body;
+
+    if (!identificador || !password) {
+      return res.status(400).json({ mensaje: "Por favor ingresa usuario y contraseña" });
+    }
+
+    const valorLimpio = identificador.trim();
+
+    // 2. Buscamos en Atlas si coincide con el correo o con el nombre (ignorando mayúsculas)
+    const usuario = await Usuario.findOne({
+      $or: [
+        { correo: valorLimpio },
+        { nombre: new RegExp(`^${valorLimpio}$`, 'i') } 
+      ]
+    }).select("+contrasena");
 
     if (!usuario) return res.status(401).json({ mensaje: "Credenciales inválidas" });
 
+    // 3. Comparamos contraseñas
     const coinciden = await bcrypt.compare(password, usuario.contrasena);
     if (!coinciden) return res.status(401).json({ mensaje: "Credenciales inválidas" });
 
+    // 4. Generamos token
     const token = jwt.sign(
       { id: usuario._id, rol: usuario.rol },
       config.jwt.secret,
@@ -22,7 +38,8 @@ export const loginUsuario = async (req, res) => {
 
     res.json({ token, usuario: { nombre: usuario.nombre, rol: usuario.rol } });
   } catch (error) {
-    res.status(500).json({ mensaje: "Error en el servidor" });
+    console.error("Error en login:", error);
+    res.status(500).json({ mensaje: "Error en el servidor al iniciar sesión" });
   }
 };
 
@@ -46,9 +63,8 @@ export const crearUsuario = async (req, res) => {
   }
 };
 
-// ... exportar las demás funciones (obtenerUsuarios, eliminarUsuario, etc.)
 /**
- * ✅ OBTENER USUARIOS (La que te daba el error)
+ * ✅ OBTENER USUARIOS
  */
 export const obtenerUsuarios = async (req, res) => {
   try {
